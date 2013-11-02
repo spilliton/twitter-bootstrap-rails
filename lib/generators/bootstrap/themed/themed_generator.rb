@@ -10,8 +10,6 @@ module Bootstrap
       argument :layout,             :type => :string, :default => "application",
                                     :banner => "Specify application layout"
 
-      class_option :excluded_columns, :type => :array, :required => false
-
       def initialize(args, *options)
         super(args, *options)
         initialize_views_variables
@@ -55,53 +53,12 @@ module Bootstrap
       end
 
       def columns
-        retrieve_columns.reject {|c| excluded?(c.name) }.map do |c|
-          new_attribute(c.name, c.type.to_s)
+        begin
+          excluded_column_names = %w[id created_at updated_at]
+          @model_name.constantize.columns.reject{|c| excluded_column_names.include?(c.name) }.collect{|c| ::Rails::Generators::GeneratedAttribute.new(c.name, c.type)}
+        rescue NoMethodError
+          @model_name.constantize.fields.collect{|c| c[1]}.reject{|c| excluded_column_names.include?(c.name) }.collect{|c| ::Rails::Generators::GeneratedAttribute.new(c.name, c.type.to_s)}
         end
-      end
-
-      def excluded_columns_names
-        %w[_id _type id created_at updated_at]
-      end
-
-      def excluded_columns_pattern
-        [
-          /.*_checksum/,
-          /.*_count/,
-        ]
-      end
-
-      def excluded_columns
-        options['excluded_columns']||[]
-      end
-
-      def excluded?(name)
-        excluded_columns_names.include?(name) ||
-        excluded_columns_pattern.any? {|p| name =~ p } ||
-        excluded_columns.include?(name)
-      end
-
-      def retrieve_columns
-        if defined?(ActiveRecord) == "constant" && ActiveRecord.class == Module 
-          rescue_block ActiveRecord::StatementInvalid do
-            @model_name.constantize.columns
-          end
-        else
-          rescue_block do
-            @model_name.constantize.fields.map {|c| c[1] }
-          end
-        end
-      end
-
-      def new_attribute(name, type)
-        ::Rails::Generators::GeneratedAttribute.new(name, type)
-      end
-
-      def rescue_block(exception=Exception)
-        yield if block_given?
-      rescue exception => e
-        say e.message, :red
-        exit
       end
 
       def extract_modules(name)
@@ -114,17 +71,14 @@ module Bootstrap
       end
 
       def generate_views
-        options.engine == generate_erb(selected_views)
-      end
-
-      def selected_views
-        {
+        views = {
           "index.html.#{ext}"                 => File.join('app/views', @controller_file_path, "index.html.#{ext}"),
           "new.html.#{ext}"                   => File.join('app/views', @controller_file_path, "new.html.#{ext}"),
           "edit.html.#{ext}"                  => File.join('app/views', @controller_file_path, "edit.html.#{ext}"),
           "#{form_builder}_form.html.#{ext}"  => File.join('app/views', @controller_file_path, "_form.html.#{ext}"),
-          "show.html.#{ext}"                  => File.join('app/views', @controller_file_path, "show.html.#{ext}")
-        }
+          "show.html.#{ext}"                  => File.join('app/views', @controller_file_path, "show.html.#{ext}")}
+        selected_views = views
+        options.engine == generate_erb(selected_views)
       end
 
       def generate_erb(views)
@@ -143,6 +97,3 @@ module Bootstrap
     end
   end
 end
-
-
-
